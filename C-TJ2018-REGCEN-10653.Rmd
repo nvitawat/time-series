@@ -1,0 +1,85 @@
+---
+title: "Techjam Forecast"
+author: "Vitawat Ngammuangpak"
+date: "10/6/2018"
+output: pdf_document
+---
+
+
+```{r}
+library(readr)
+library(dplyr)
+library(Metrics)
+library(ggplot2)
+library(forecast)
+
+setwd("/Users/vitawat/documents/Rdata/DataSquad/TJ2018-REGIONAL/DATA/TJ2018_REG_CEN_DATA/")
+mrch <- read.csv("mrch_detail.csv", head=T)
+txn <- read.csv("txn.csv", head=T)
+y_index <- read.csv("y_test_index.csv", head=F)
+```
+
+```{r}
+# set pos_dt from YYYY-MM-DD to YYYY-MM
+txn$pos_dt <- format(as.Date.character(txn$pos_dt), "%Y-%m")
+# delete card_no_encpt
+txn$card_no_encpt <- NULL
+# group by mrch_cd and post_dt
+M <- group_by(txn, mrch_cd, pos_dt ) %>%
+        summarise(sum_txn_amt = sum(txn_amt),
+                  cnt_txn_amt = length(txn_amt)
+        )
+# now we get txn by mrch_cd and sum_txn_amt,cnt_txn_amt by month
+
+# set mrch_cd 
+temp_id <- y_index
+# set period 2017-02 to 2018-05
+temp_dt <- seq(as.Date("2017/02/01"), by = "month", length.out = 16)
+# merge file
+M2 <- merge(temp_id, temp_dt, all = TRUE)
+colnames(M2)[1:2] <- c("mrch_cd","pos_dt")
+M2$pos_dt <- format(as.Date.character(M2$pos_dt), "%Y-%m")
+# join M2 with M
+M3 <- M2 %>%
+    left_join(M, by = c("mrch_cd", "pos_dt"))
+
+# change NA to 0 no transaction
+M3[is.na(M3)] <- 0
+
+pred_amt_ex <- data.frame()
+pred_amt_ar <- data.frame()
+pred_cnt_ex <- data.frame()
+pred_cnt_ar <- data.frame()
+
+#temp_id <- as.vector(temp_id)
+
+for(i in 0:9999) {
+  # input ip_id = i
+  tsd <- ts(M3$sum_txn_amt[M3$mrch_cd == i])
+  tsn <- ts(M3$cnt_txn_amt[M3$mrch_cd == i])
+  # predict amt and cnt use exponential
+  fit.ex <- ets(tsd)
+  fore_ex <- forecast(fit.ex,1)
+  fit.ex <- ets(tsn)
+  cnt_ex <- forecast(fit.ex,1)
+  # predict amt and cnt use arima
+  fit.ar <- auto.arima(tsd)
+  fore_ar <- forecast(fit.ar,1)
+  fit.ar <- auto.arima(tsn)
+  cnt_ar <- forecast(fit.ar,1) 
+    
+  pred_amt_ex <- rbind(pred_amt_ex, as.numeric(fore_ex$mean))
+  pred_amt_ar <- rbind(pred_amt_ar, as.numeric(fore_ar$mean))
+  
+  pred_cnt_ex <- rbind(pred_cnt_ex, as.numeric(cnt_ex$mean))
+  pred_cnt_ar <- rbind(pred_cnt_ar, as.numeric(cnt_ar$mean))
+  print(i)
+}
+
+write.csv(pred_cnt_ex, file = "pred_cnt_ex.csv")
+write.csv(pred_cnt_ar, file = "pred_cnt_ar.csv")
+write.csv(pred_amt_ex, file = "pred_amt_ex.csv")
+write.csv(pred_amt_ar, file = "pred_amt_ar.csv")
+```
+
+
